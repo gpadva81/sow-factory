@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { SOW_SYSTEM_PROMPT, buildUserPrompt } from './prompts';
 import type { LLMGenerateResult, LLMProvider } from './interface';
+import { getOpenAIKey, getOpenAIModel } from '@/lib/config/store';
 import { logger } from '@/lib/logger';
 
 // ─── Zod schema for LLM response validation ────────────────────────────────────
@@ -12,28 +13,6 @@ const DeliverableSchema = z.object({
   acceptance_criteria: z.string(),
 });
 
-const TimelineSchema = z.object({
-  milestone: z.string(),
-  eta: z.string(),
-});
-
-const RoleSchema = z.object({
-  role: z.string(),
-  responsibilities: z.array(z.string()),
-});
-
-const RiskSchema = z.object({
-  risk: z.string(),
-  mitigation: z.string(),
-});
-
-const PricingSchema = z.object({
-  model: z.enum(['fixed', 'tm', 'retainer']),
-  amount: z.number(),
-  currency: z.string(),
-  notes: z.string(),
-});
-
 const SOWOutputSchema = z.object({
   project_title: z.string(),
   client_name: z.string(),
@@ -42,11 +21,18 @@ const SOWOutputSchema = z.object({
   scope_included: z.array(z.string()),
   scope_excluded: z.array(z.string()),
   deliverables: z.array(DeliverableSchema),
-  timeline: z.array(TimelineSchema),
-  roles_responsibilities: z.array(RoleSchema),
+  timeline: z.array(z.object({ milestone: z.string(), eta: z.string() })),
+  roles_responsibilities: z.array(
+    z.object({ role: z.string(), responsibilities: z.array(z.string()) }),
+  ),
   assumptions: z.array(z.string()),
-  risks: z.array(RiskSchema),
-  pricing: PricingSchema,
+  risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })),
+  pricing: z.object({
+    model: z.enum(['fixed', 'tm', 'retainer']),
+    amount: z.number(),
+    currency: z.string(),
+    notes: z.string(),
+  }),
   terms: z.array(z.string()),
 });
 
@@ -58,27 +44,25 @@ const LLMResponseSchema = z.object({
 // ─── OpenAI provider ───────────────────────────────────────────────────────────
 
 export class OpenAIProvider implements LLMProvider {
-  private client: OpenAI;
-  private model: string;
-
-  constructor() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not set');
-    }
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    this.model = process.env.OPENAI_MODEL ?? 'gpt-4o';
-  }
-
   async generateSOW(
     intakeData: Record<string, unknown>,
     templateContext: { name: string; description: string | null },
   ): Promise<LLMGenerateResult> {
+    const apiKey = await getOpenAIKey();
+    if (!apiKey) {
+      throw new Error(
+        'OpenAI API key is not configured. Go to Settings to add your OpenAI API key.',
+      );
+    }
+
+    const model = await getOpenAIModel();
+    const client = new OpenAI({ apiKey });
     const userPrompt = buildUserPrompt(intakeData, templateContext);
 
-    logger.info({ model: this.model, template: templateContext.name }, 'Calling LLM for SOW generation');
+    logger.info({ model, template: templateContext.name }, 'Calling LLM for SOW generation');
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
+    const response = await client.chat.completions.create({
+      model,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SOW_SYSTEM_PROMPT },
@@ -111,13 +95,11 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
-// ─── Singleton getter (allows future provider swap) ────────────────────────────
+// ─── Singleton ─────────────────────────────────────────────────────────────────
 
 let _provider: LLMProvider | null = null;
 
 export function getLLMProvider(): LLMProvider {
-  if (!_provider) {
-    _provider = new OpenAIProvider();
-  }
+  if (!_provider) _provider = new OpenAIProvider();
   return _provider;
 }

@@ -23,7 +23,7 @@ enum SOWStatus {
   FAILED
 }
 
-// ─── NextAuth required tables ──────────────────────────────────────────────────
+// ─── NextAuth tables (kept for future OAuth provider support) ──────────────────
 
 model Account {
   id                String  @id @default(cuid())
@@ -68,6 +68,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  password      String?   // bcrypt hash; null for OAuth users
   role          Role      @default(MEMBER)
   createdAt     DateTime  @default(now())
 
@@ -129,9 +130,17 @@ model Log {
   sow   SOW?  @relation(fields: [entityId], references: [id])
 }
 
-/// Placeholder registry for external service credentials.
-/// For MVP the actual secrets live in env vars; this table records
-/// which env key to look up so an admin can audit what's configured.
+/// Encrypted key-value store for runtime credentials (Azure, OpenAI, etc.)
+/// Values are AES-256-GCM encrypted with ENCRYPTION_KEY env var.
+model AppConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  encrypted   String   @db.Text
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+/// Registry of which env keys exist – informational only, values stay in env vars / AppConfig
 model IntegrationSecretRef {
   id          String   @id @default(cuid())
   name        String   @unique
