@@ -202,9 +202,19 @@ export function DynamicIntakeForm({ schema, onSubmit, loading = false }: Dynamic
 
   const topRequired = new Set(schema.required ?? []);
 
+  // Postgres JSONB returns object keys in alphabetical order, not insertion order.
+  // Re-sort: required fields first (in their declared order), then the rest.
+  const requiredOrder = schema.required ?? [];
+  const allKeys = Object.keys(schema.properties);
+  const sortedKeys = [
+    ...requiredOrder.filter((k) => allKeys.includes(k)),
+    ...allKeys.filter((k) => !requiredOrder.includes(k)),
+  ];
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {Object.entries(schema.properties).map(([key, prop]) => {
+      {sortedKeys.map((key) => {
+        const prop = schema.properties[key];
         if (isSection(prop)) {
           const sectionRequired = new Set(prop.required ?? []);
           const sectionValues = (values[key] as Record<string, unknown>) ?? {};

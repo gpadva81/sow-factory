@@ -127,5 +127,5 @@ export async function getOpenAIKey(): Promise<string | null> {
 
 export async function getOpenAIModel(): Promise<string> {
   const dbModel = await getConfigValue('openai.model');
-  return dbModel ?? process.env.OPENAI_MODEL ?? 'gpt-4o';
+  return dbModel ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 }
